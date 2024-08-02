@@ -25,6 +25,7 @@ parameterDefinitions:
     label: Frames
     groupLabel: Maya Settings
   description: The frames to render. E.g. 1-3,8,11-15
+  default: '1'
   minLength: 1
 - name: ProjectPath
   type: PATH
@@ -73,6 +74,7 @@ parameterDefinitions:
     label: Output File Prefix
     groupLabel: Maya Settings
   description: The output filename prefix.
+  default: '<Scene>'
 - name: ImageWidth
   type: INT
   userInterface:
