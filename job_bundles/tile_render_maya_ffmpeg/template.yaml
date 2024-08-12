@@ -1,6 +1,25 @@
 specificationVersion: jobtemplate-2023-09
-name: tile render maya ffmpeg
+name: Maya Tiled Render
+description: |
+  This job uses Maya, Arnold for Maya and ffmpeg to do tile rendering and assembly.
+  Tile rendering divides an image into evenly sized regions, and assembly stiches the tiles
+  back together. 
+  
+  As of 07/2024, this example requires modifications to the arnold render handler in the 
+  Deadline Cloud Maya Adaptor to successfully run. It also requires Linux render workers to
+  execute the assembly step as it is a bash script.
+
+  It uses two conda channels to get software. Maya and Arnold is acquired from the
+  deadline-cloud channel accessible from Deadline Cloud service-managed fleets, and FFmpeg
+  is from the conda-forge community channel.
+
+  This job bundle has 2 steps:
+
+  1. Render the images as tiles using the modified Arnold render handler.
+  2. Uses ffmpeg to assemble the tiles into the whole image.
 parameterDefinitions:
+
+# Render Parameters
 - name: MayaSceneFile
   type: PATH
   objectType: FILE
@@ -27,6 +46,14 @@ parameterDefinitions:
   description: The frames to render. E.g. 1-3,8,11-15
   default: '1'
   minLength: 1
+- name: RenderLayer
+  type: STRING
+  userInterface:
+    control: LINE_EDIT
+    label: Render Layer
+    groupLabel: Maya Settings
+  description: The name of the layer to render.
+  default: 'masterLayer'
 - name: ProjectPath
   type: PATH
   objectType: DIRECTORY
@@ -91,6 +118,8 @@ parameterDefinitions:
     groupLabel: Maya Settings
   minValue: 1
   description: The image height of the output.
+
+# Tile Render Parameters
 - name: NumXTiles
   type: INT
   userInterface:
@@ -107,6 +136,8 @@ parameterDefinitions:
     groupLabel: Tile Rendering Settings
   minValue: 1
   description: The number of tiles across the y axis.
+
+# Arnold Renderer Settings
 - name: ArnoldErrorOnLicenseFailure
   type: STRING
   userInterface:
@@ -118,6 +149,8 @@ parameterDefinitions:
   allowedValues:
   - 'true'
   - 'false'
+
+# Override Parameters
 - name: OverrideAdaptorWheels
   type: PATH
   objectType: DIRECTORY
@@ -135,7 +168,8 @@ parameterDefinitions:
     label: Adaptor Name
     groupLabel: Override settings
   description: The name of the adaptor to override, for example NukeAdaptor or MayaAdaptor.
-  default: MayaAdaptor
+  default: maya-openjd
+
 steps:
 - name: masterLayer tile render
   parameterSpace:
@@ -163,7 +197,7 @@ steps:
         type: TEXT
         data: |
           renderer: arnold
-          render_layer: masterLayer
+          render_layer: '{{Param.RenderLayer}}'
           scene_file: '{{Param.MayaSceneFile}}'
           project_path: '{{Param.ProjectPath}}'
           output_file_path: '{{Param.OutputFilePath}}'
@@ -175,7 +209,7 @@ steps:
           error_on_arnold_license_fail: {{Param.ArnoldErrorOnLicenseFailure}}
       actions:
         onEnter:
-          command: MayaAdaptor
+          command: maya-openjd
           args:
           - daemon
           - start
@@ -188,7 +222,7 @@ steps:
           cancelation:
             mode: NOTIFY_THEN_TERMINATE
         onExit:
-          command: MayaAdaptor
+          command: maya-openjd
           args:
           - daemon
           - stop
@@ -211,7 +245,7 @@ steps:
         output_file_prefix: '{{Param.OutputFilePrefix}}'
     actions:
       onRun:
-        command: MayaAdaptor
+        command: maya-openjd
         args:
         - daemon
         - run
@@ -238,15 +272,29 @@ steps:
 
         set -xeuo pipefail
 
-        # ASSUMPTION: output folder will either contain tiles, or folders with tiles, never both. Does not account for nested subdirectories.
+        # ASSUMPTIONS: 
+        # Output folder will either contain tiles, or folders with tiles, never both.
+        # No nested subdirectories (max one layer of subdirectories).
+        # Tiles are in correct sequential order given assembly goes left-right from top-bottom.
+        # Either the name.#.ext or name.ext Maya "Frame/Animation ext" render setting is used.
+        # Output tiles are pngs. Swap png with the desired file ext in the script as needed.
 
         has_subdirs=true
-
+        FRAMES={{Param.Frames}}
+        startFrame=${FRAMES%-*}
+        endFrame=${FRAMES#*-}
+        
         # If there are sub-directories in the output path, iterate over each item in the output file path directory and call ffmpeg for the sub-directory
         for item in "{{Param.OutputFilePath}}"/*; do
           # Check if the item is a directory
           if [ -d "$item" ]; then
-            ffmpeg -y -pattern_type glob -i "/$item/*.png" -filter_complex tile={{Param.NumXTiles}}x{{Param.NumYTiles}}  "/$item/output.png"
+            if [[ "$startFrame" == "$endFrame" ]]; then
+              ffmpeg -y -pattern_type glob -i "/$item/*.png" -filter_complex tile={{Param.NumXTiles}}x{{Param.NumYTiles}}  "/$item/output.png"
+            else
+              for frame in $(seq "$startFrame" "$endFrame"); do
+                ffmpeg -y -pattern_type glob -i "/$item/*$frame.png" -filter_complex tile={{Param.NumXTiles}}x{{Param.NumYTiles}}  "/$item/output.$frame.png"
+              done
+            fi
           else
             has_subdirs=false
             break
@@ -254,7 +302,13 @@ steps:
         done
 
         if [ "$has_subdirs" = false ]; then
-          ffmpeg -y -pattern_type glob -i "{{Param.OutputFilePath}}/*.png" -filter_complex tile={{Param.NumXTiles}}x{{Param.NumYTiles}}  "{{Param.OutputFilePath}}/output.png"
+          if [[ "$startFrame" == "$endFrame" ]]; then
+              ffmpeg -y -pattern_type glob -i "{{Param.OutputFilePath}}/*.png" -filter_complex tile={{Param.NumXTiles}}x{{Param.NumYTiles}}  "{{Param.OutputFilePath}}/output.png"
+          else
+            for frame in $(seq "$startFrame" "$endFrame"); do
+              ffmpeg -y -pattern_type glob -i "{{Param.OutputFilePath}}/*$frame.png" -filter_complex tile={{Param.NumXTiles}}x{{Param.NumYTiles}}  "{{Param.OutputFilePath}}/output.$frame.png"
+            done
+          fi
         fi
 jobEnvironments:
 - name: OverrideAdaptor
