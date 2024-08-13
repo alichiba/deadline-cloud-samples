@@ -177,7 +177,7 @@ parameterDefinitions:
   default: maya-openjd
 
 steps:
-- name: masterLayer tile render
+- name: tile render
   parameterSpace:
     taskParameterDefinitions:
     - name: Frame
@@ -261,7 +261,7 @@ steps:
         - file://{{ Task.File.runData }}
         cancelation:
           mode: NOTIFY_THEN_TERMINATE
-- name: ffmpeg tile assembly
+- name: tile assembly
   dependencies:
   - dependsOn: masterLayer tile render
   script:
