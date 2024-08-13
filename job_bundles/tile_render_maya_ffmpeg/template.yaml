@@ -17,6 +17,12 @@ description: |
 
   1. Render the images as tiles using the modified Arnold render handler.
   2. Uses ffmpeg to assemble the tiles into the whole image.
+
+  Next steps:
+  This job bundle could handle the tile rendering calculations that currently need to be added
+  to the Maya adaptor in the render step, leaving the Maya adaptor to simply handle region rendering.
+  Refer to https://github.com/mwiebe/deadline-cloud-samples/commit/ca4fa1162f504c92798536e1931b6b1c6df90285
+  for sample changes to this template.
 parameterDefinitions:
 
 # Render Parameters
