@@ -263,7 +263,7 @@ steps:
           mode: NOTIFY_THEN_TERMINATE
 - name: tile assembly
   dependencies:
-  - dependsOn: masterLayer tile render
+  - dependsOn: tile render
   script:
     actions:
       onRun:
